@@ -2,7 +2,6 @@
 
 namespace Friendica\Test\src\Util;
 
-use Error;
 use Friendica\Model\Group;
 use Friendica\Util\ACLFormatter;
 use PHPUnit\Framework\TestCase;
@@ -161,18 +160,6 @@ class ACLFormaterTest extends TestCase
 
 		$text="<1><><3>";
 		$this->assertEquals(array('1', '3'), $aclFormatter->expand($text));
-	}
-
-	/**
-	 * Test expected exception in case of wrong typehint
-	 *
-	 * @expectedException Error
-	 */
-	public function testExpandNull()
-	{
-		$aclFormatter = new ACLFormatter();
-
-		$aclFormatter->expand(null);
 	}
 
 	public function dataAclToString()
