@@ -176,9 +176,11 @@ class Transmitter
 
 			$items = Item::select(['id'], $condition, ['limit' => [($page - 1) * 20, 20], 'order' => ['created' => true]]);
 			while ($item = Item::fetch($items)) {
-				$object = self::createObjectFromItemID($item['id']);
-				unset($object['@context']);
-				$list[] = $object;
+				$activity = self::createActivityFromItem($item['id'], true);
+				// Only list "Create" activity objects here, no reshares
+				if (is_array($activity['object']) && ($activity['type'] == 'Create')) {
+					$list[] = $activity['object'];
+				}
 			}
 
 			if (!empty($list)) {
@@ -378,6 +380,15 @@ class Transmitter
 		}
 
 		$terms = Term::tagArrayFromItemId($item['id'], [Term::MENTION, Term::IMPLICIT_MENTION]);
+
+		// Directly mention the original author upon a quoted reshare.
+		// Else just ensure that the original author receives the reshare.
+		$announce = self::getAnnounceArray($item);
+		if (!empty($announce['comment'])) {
+			$data['to'][] = $announce['actor']['url'];
+		} elseif (!empty($announce)) {
+			$data['cc'][] = $announce['actor']['url'];
+		}
 
 		if (!$item['private']) {
 			$data = array_merge($data, self::fetchPermissionBlockFromConversation($item));
@@ -653,6 +664,9 @@ class Transmitter
 	public static function ItemArrayFromMail($mail_id)
 	{
 		$mail = DBA::selectFirst('mail', [], ['id' => $mail_id]);
+		if (!DBA::isResult($mail)) {
+			return [];
+		}
 
 		$reply = DBA::selectFirst('mail', ['uri'], ['parent-uri' => $mail['parent-uri'], 'reply' => false]);
 
@@ -696,11 +710,6 @@ class Transmitter
 		$mail = self::ItemArrayFromMail($mail_id);
 		$object = self::createNote($mail);
 
-		$object['to'] = $object['cc'];
-		unset($object['cc']);
-
-		$object['tag'] = [['type' => 'Mention', 'href' => $object['to'][0], 'name' => 'test']];
-
 		if (!$object_mode) {
 			$data = ['@context' => ActivityPub::CONTEXT];
 		} else {
@@ -726,6 +735,8 @@ class Transmitter
 		unset($data['bcc']);
 
 		$object['to'] = $data['to'];
+		$object['tag'] = [['type' => 'Mention', 'href' => $object['to'][0], 'name' => '']];
+
 		unset($object['cc']);
 		unset($object['bcc']);
 
@@ -757,8 +768,8 @@ class Transmitter
 
 		// Only check for a reshare, if it is a real reshare and no quoted reshare
 		if (strpos($item['body'], "[share") === 0) {
-			$announce = api_share_as_retweet($item);
-			$reshared = !empty($announce['plink']);
+			$announce = self::getAnnounceArray($item);
+			$reshared = !empty($announce);
 		}
 
 		if ($reshared) {
@@ -920,29 +931,6 @@ class Transmitter
 	}
 
 	/**
-	 * Creates an object array for a given item id
-	 *
-	 * @param integer $item_id
-	 *
-	 * @return array with the object data
-	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
-	 * @throws \ImagickException
-	 */
-	public static function createObjectFromItemID($item_id)
-	{
-		$item = Item::selectFirst([], ['id' => $item_id, 'parent-network' => Protocol::NATIVE_SUPPORT]);
-
-		if (!DBA::isResult($item)) {
-			return false;
-		}
-
-		$data = ['@context' => ActivityPub::CONTEXT];
-		$data = array_merge($data, self::createNote($item));
-
-		return $data;
-	}
-
-	/**
 	 * Creates a location entry for a given item array
 	 *
 	 * @param array $item
@@ -1004,6 +992,13 @@ class Transmitter
 				$tags[] = ['type' => 'Mention', 'href' => $term['url'], 'name' => $mention];
 			}
 		}
+
+		$announce = self::getAnnounceArray($item);
+		// Mention the original author upon commented reshares
+		if (!empty($announce['comment'])) {
+			$tags[] = ['type' => 'Mention', 'href' => $announce['actor']['url'], 'name' => '@' . $announce['actor']['addr']];
+		}
+
 		return $tags;
 	}
 
@@ -1020,6 +1015,37 @@ class Transmitter
 	{
 		$attachments = [];
 
+		// Currently deactivated, since it creates side effects on Mastodon and Pleroma.
+		// It will be reactivated, once this cleared.
+		/*
+		$attach_data = BBCode::getAttachmentData($item['body']);
+		if (!empty($attach_data['url'])) {
+			$attachment = ['type' => 'Page',
+				'mediaType' => 'text/html',
+				'url' => $attach_data['url']];
+
+			if (!empty($attach_data['title'])) {
+				$attachment['name'] = $attach_data['title'];
+			}
+
+			if (!empty($attach_data['description'])) {
+				$attachment['summary'] = $attach_data['description'];
+			}
+
+			if (!empty($attach_data['image'])) {
+				$imgdata = Images::getInfoFromURLCached($attach_data['image']);
+				if ($imgdata) {
+					$attachment['icon'] = ['type' => 'Image',
+						'mediaType' => $imgdata['mime'],
+						'width' => $imgdata[0],
+						'height' => $imgdata[1],
+						'url' => $attach_data['image']];
+				}
+			}
+
+			$attachments[] = $attachment;
+		}
+		*/
 		$arr = explode('[/attach],', $item['attach']);
 		if (count($arr)) {
 			foreach ($arr as $r) {
@@ -1203,6 +1229,10 @@ class Transmitter
 	 */
 	public static function createNote($item)
 	{
+		if (empty($item)) {
+			return [];
+		}
+
 		if ($item['event-type'] == 'event') {
 			$type = 'Event';
 		} elseif (!empty($item['title'])) {
@@ -1272,6 +1302,7 @@ class Transmitter
 
 		$regexp = "/[@!]\[url\=([^\[\]]*)\].*?\[\/url\]/ism";
 		$richbody = preg_replace_callback($regexp, ['self', 'mentionCallback'], $item['body']);
+		$richbody = BBCode::removeAttachment($richbody);
 
 		$data['contentMap']['text/html'] = BBCode::convert($richbody, false);
 		$data['contentMap']['text/markdown'] = BBCode::toMarkdown($item["body"]);
@@ -1335,44 +1366,72 @@ class Transmitter
 	private static function createAnnounce($item, $data)
 	{
 		$orig_body = $item['body'];
-		$announce = api_share_as_retweet($item);
-		if (empty($announce['plink'])) {
+		$announce = self::getAnnounceArray($item);
+		if (empty($announce)) {
 			$data['type'] = 'Create';
 			$data['object'] = self::createNote($item);
 			return $data;
 		}
 
-		// Fetch the original id of the object
-		$activity = ActivityPub::fetchContent($announce['plink'], $item['uid']);
-		if (!empty($activity)) {
-			$ldactivity = JsonLD::compact($activity);
-			$id = JsonLD::fetchElement($ldactivity, '@id');
-			$type = str_replace('as:', '', JsonLD::fetchElement($ldactivity, '@type'));
-			if (!empty($id)) {
-				if (empty($announce['share-pre-body'])) {
-					// Pure announce, without a quote
-					$data['type'] = 'Announce';
-					$data['object'] = $id;
-					return $data;
-				}
-
-				// Quote
-				$data['type'] = 'Create';
-				$item['body'] = trim($announce['share-pre-body']) . "\n" . $id;
-				$data['object'] = self::createNote($item);
-
-				/// @todo Finally descide how to implement this in AP. This is a possible way:
-				$data['object']['attachment'][] = ['type' => $type, 'id' => $id];
-
-				$data['object']['source']['content'] = $orig_body;
-				return $data;
-			}
+		if (empty($announce['comment'])) {
+			// Pure announce, without a quote
+			$data['type'] = 'Announce';
+			$data['object'] = $announce['object']['uri'];
+			return $data;
 		}
 
-		$item['body'] = $orig_body;
+		// Quote
 		$data['type'] = 'Create';
+		$item['body'] = $announce['comment'] . "\n" . $announce['object']['plink'];
 		$data['object'] = self::createNote($item);
+
+		/// @todo Finally descide how to implement this in AP. This is a possible way:
+		$data['object']['attachment'][] = self::createNote($announce['object']);
+
+		$data['object']['source']['content'] = $orig_body;
 		return $data;
+	}
+
+	/**
+	 * Return announce related data if the item is an annunce
+	 *
+	 * @param array $item
+	 *
+	 * @return array
+	 */
+	public static function getAnnounceArray($item)
+	{
+		if (!preg_match("/(.*?)\[share(.*?)\]\s?.*?\s?\[\/share\]\s?/ism", $item['body'], $matches)) {
+			return [];
+		}
+
+		$attributes = $matches[2];
+		$comment = $matches[1];
+
+		preg_match("/guid='(.*?)'/ism", $attributes, $matches);
+		if (empty($matches[1])) {
+			preg_match('/guid="(.*?)"/ism', $attributes, $matches);
+		}
+
+		if (empty($matches[1])) {
+			return [];
+		}
+
+		$reshared_item = Item::selectFirst([], ['guid' => $matches[1]]);
+		if (!DBA::isResult($reshared_item)) {
+			return [];
+		}
+
+		if (!in_array($reshared_item['network'], [Protocol::ACTIVITYPUB, Protocol::DFRN])) {
+			return [];
+		}
+
+		$profile = APContact::getByURL($reshared_item['author-link'], false);
+		if (empty($profile)) {
+			return [];
+		}
+
+		return ['object' => $reshared_item, 'actor' => $profile, 'comment' => trim($comment)];
 	}
 
 	/**

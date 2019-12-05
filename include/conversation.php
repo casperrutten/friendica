@@ -402,7 +402,7 @@ function visible_activity($item) {
 	/** @var Activity $activity */
 	$activity = BaseObject::getClass(Activity::class);
 
-	if ($activity->isHidden($item['verb'])) {
+	if (empty($item['verb']) || $activity->isHidden($item['verb'])) {
 		return false;
 	}
 
@@ -1034,7 +1034,7 @@ function builtin_activity_puller($item, &$conv_responses) {
 		/** @var Activity $activity */
 		$activity = BaseObject::getClass(Activity::class);
 
-		if ($activity->match($item['verb'], $verb) && ($item['id'] != $item['parent'])) {
+		if (!empty($item['verb']) && $activity->match($item['verb'], $verb) && ($item['id'] != $item['parent'])) {
 			$author = ['uid' => 0, 'id' => $item['author-id'],
 				'network' => $item['author-network'], 'url' => $item['author-link']];
 			$url = Contact::magicLinkByContact($author);
@@ -1479,7 +1479,7 @@ function conv_sort(array $item_list, $order)
 		$parents[$i]['children'] = sort_item_children($parents[$i]['children']);
 	}
 
-	if (PConfig::get(local_user(), 'system', 'smart_threading', 0)) {
+	if (!PConfig::get(local_user(), 'system', 'no_smart_threading', 0)) {
 		foreach ($parents as $i => $parent) {
 			$parents[$i] = smart_flatten_conversation($parent);
 		}

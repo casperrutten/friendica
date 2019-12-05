@@ -189,6 +189,11 @@ return [
 		// For development only. Disables the item cache.
 		'ignore_cache' => false,
 
+		// insecure_imap (Boolean)
+		// If enabled, users are allowed to connect to their IMAP servers unencrypted.
+		// For security reasons this is disabled by default.
+		'insecure_imap' => false,
+
 		// instances_social_key (String)
 		// Key to the API of https://instances.social which retrieves data about mastodon servers.
 		// See https://instances.social/api/token to get an API key.
@@ -368,6 +373,14 @@ return [
 		// show_global_community_hint (Boolean)
 		// When the global community page is enabled, use this option to display a hint above the stream, that this is a collection of all public top-level postings that arrive on your node.
 		'show_global_community_hint' => false,
+
+		// show_received (Boolean)
+		// Show the receive data along with the post creation date
+		'show_received' => true,
+
+		// show_received_seconds (Integer)
+		// Display the received date when the difference between received and created is higher than this.
+		'show_received_seconds' => 500,
 
 		// show_unsupported_addons (Boolean)
 		// Show all addons including the unsupported ones.

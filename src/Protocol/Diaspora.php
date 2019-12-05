@@ -3419,7 +3419,7 @@ class Diaspora
 			$condition = ['guid' => $guid, 'network' => [Protocol::DFRN, Protocol::DIASPORA]];
 			$item = Item::selectFirst(['contact-id'], $condition);
 			if (DBA::isResult($item)) {
-				$ret= [];
+				$ret = [];
 				$ret["root_handle"] = self::handleFromContact($item["contact-id"]);
 				$ret["root_guid"] = $guid;
 				return $ret;
@@ -3445,12 +3445,12 @@ class Diaspora
 			$profile = $matches[1];
 		}
 
-		$ret= [];
+		$ret = [];
 
-		if ($profile != "") {
-			if (Contact::getIdForURL($profile)) {
-				$author = Contact::getDetailsByURL($profile);
-				$ret["root_handle"] = $author['addr'];
+		if (!empty($profile) && ($cid = Contact::getIdForURL($profile))) {
+			$contact = DBA::selectFirst('contact', ['addr'], ['id' => $cid]);
+			if (!empty($contact['addr'])) {
+				$ret['root_handle'] = $contact['addr'];
 			}
 		}
 
@@ -3565,8 +3565,7 @@ class Diaspora
 		$myaddr = self::myHandle($owner);
 
 		$public = ($item["private"] ? "false" : "true");
-
-		$created = DateTimeFormat::utc($item["created"], DateTimeFormat::ATOM);
+		$created = DateTimeFormat::utc($item['received'], DateTimeFormat::ATOM);
 		$edited = DateTimeFormat::utc($item["edited"] ?? $item["created"], DateTimeFormat::ATOM);
 
 		// Detect a share element and do a reshare
@@ -3584,6 +3583,14 @@ class Diaspora
 			$title = $item["title"];
 			$body = $item["body"];
 
+			// Fetch the title from an attached link - if there is one
+			if (empty($item["title"]) && PConfig::get($owner['uid'], 'system', 'attach_link_title')) {
+				$page_data = BBCode::getAttachmentData($item['body']);
+				if (!empty($page_data['type']) && !empty($page_data['title']) && ($page_data['type'] == 'link')) {
+					$title = $page_data['title'];
+				}
+			}
+
 			if ($item['author-link'] != $item['owner-link']) {
 				require_once 'mod/share.php';
 				$body = share_header($item['author-name'], $item['author-link'], $item['author-avatar'],
@@ -3595,7 +3602,7 @@ class Diaspora
 
 			// Adding the title
 			if (strlen($title)) {
-				$body = "## ".html_entity_decode($title)."\n\n".$body;
+				$body = "### ".html_entity_decode($title)."\n\n".$body;
 			}
 
 			if ($item["attach"]) {

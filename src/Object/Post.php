@@ -378,6 +378,12 @@ class Post extends BaseObject
 
 		$tags = Term::populateTagsFromItem($item);
 
+		$ago = Temporal::getRelativeDate($item['created']);
+		$ago_received = Temporal::getRelativeDate($item['received']);
+		if (Config::get('system', 'show_received') && (abs(strtotime($item['created']) - strtotime($item['received'])) > Config::get('system', 'show_received_seconds')) && ($ago != $ago_received)) {
+			$ago = L10n::t('%s (Received %s)', $ago, $ago_received);
+		}
+
 		$tmp_item = [
 			'template'        => $this->getTemplate(),
 			'type'            => implode("", array_slice(explode("/", $item['verb']), -1)),
@@ -412,7 +418,7 @@ class Post extends BaseObject
 			'sparkle'         => $sparkle,
 			'title'           => $title_e,
 			'localtime'       => DateTimeFormat::local($item['created'], 'r'),
-			'ago'             => $item['app'] ? L10n::t('%s from %s', Temporal::getRelativeDate($item['created']), $item['app']) : Temporal::getRelativeDate($item['created']),
+			'ago'             => $item['app'] ? L10n::t('%s from %s', $ago, $item['app']) : $ago,
 			'app'             => $item['app'],
 			'created'         => Temporal::getRelativeDate($item['created']),
 			'lock'            => $lock,

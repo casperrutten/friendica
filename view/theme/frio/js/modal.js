@@ -159,20 +159,19 @@ Dialog.showJot = function() {
 // Init the filebrowser after page load.
 Dialog._load = function(url) {
 	// Get nickname & filebrowser type from the modal content.
-	var nickname = $("#fb-nickname").attr("value");
-	var type = $("#fb-type").attr("value");
+	let filebrowser = document.getElementById('filebrowser');
 
 	// Try to fetch the hash form the url.
-	var match = url.match(/fbrowser\/[a-z]+\/.*(#.*)/);
-	if (match===null) return; //not fbrowser
-	var hash = match[1];
+	let match = url.match(/fbrowser\/[a-z]+\/.*(#.*)/);
+	if (!filebrowser || match === null) {
+		return; //not fbrowser
+	}
 
 	// Initialize the filebrowser.
-	var jsbrowser = function() {
-		FileBrowser.init(nickname, type, hash);
-	};
 	loadScript("view/js/ajaxupload.js");
-	loadScript("view/theme/frio/js/filebrowser.js", jsbrowser);
+	loadScript("view/theme/frio/js/filebrowser.js", function() {
+		FileBrowser.init(filebrowser.dataset.nickname, filebrowser.dataset.type, match[1]);
+	});
 };
 
 /**
@@ -344,11 +343,11 @@ function toggleJotNav (elm) {
 
 	// Minimize all tab content wrapper and activate only the selected
 	// tab panel.
-	$('#jot-modal [role=tabpanel]').addClass("minimize").attr("aria-hidden" ,"true");
-	$('#jot-modal #' + tabpanel).removeClass("minimize").attr("aria-hidden" ,"false");
+	$('#profile-jot-form > [role=tabpanel]').addClass("minimize").attr("aria-hidden" ,"true");
+	$('#' + tabpanel).removeClass("minimize").attr("aria-hidden" ,"false");
 
 	// Set the aria-selected states
-	$("#jot-modal .nav-tabs .jot-nav-lnk").attr("aria-selected", "false");
+	$("#jot-modal .modal-header .nav-tabs .jot-nav-lnk").attr("aria-selected", "false");
 	elm.setAttribute("aria-selected", "true");
 
 	// For some some tab panels we need to execute other js functions.

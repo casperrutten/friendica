@@ -239,6 +239,7 @@ function settings_post(App $a)
 			PConfig::set(local_user(), 'system', 'accept_only_sharer', intval($_POST['accept_only_sharer']));
 			PConfig::set(local_user(), 'system', 'disable_cw', intval($_POST['disable_cw']));
 			PConfig::set(local_user(), 'system', 'no_intelligent_shortening', intval($_POST['no_intelligent_shortening']));
+			PConfig::set(local_user(), 'system', 'attach_link_title', intval($_POST['attach_link_title']));
 			PConfig::set(local_user(), 'system', 'ostatus_autofriend', intval($_POST['snautofollow']));
 			PConfig::set(local_user(), 'ostatus', 'default_group', $_POST['group-selection']);
 			PConfig::set(local_user(), 'ostatus', 'legacy_contact', $_POST['legacy_contact']);
@@ -326,17 +327,17 @@ function settings_post(App $a)
 	if (($a->argc > 1) && ($a->argv[1] === 'display')) {
 		BaseModule::checkFormSecurityTokenRedirectOnError('/settings/display', 'settings_display');
 
-		$theme             = !empty($_POST['theme'])             ? Strings::escapeTags(trim($_POST['theme']))        : $a->user['theme'];
-		$mobile_theme      = !empty($_POST['mobile_theme'])      ? Strings::escapeTags(trim($_POST['mobile_theme'])) : '';
-		$nosmile           = !empty($_POST['nosmile'])           ? intval($_POST['nosmile'])            : 0;
-		$first_day_of_week = !empty($_POST['first_day_of_week']) ? intval($_POST['first_day_of_week'])  : 0;
-		$noinfo            = !empty($_POST['noinfo'])            ? intval($_POST['noinfo'])             : 0;
-		$infinite_scroll   = !empty($_POST['infinite_scroll'])   ? intval($_POST['infinite_scroll'])    : 0;
-		$no_auto_update    = !empty($_POST['no_auto_update'])    ? intval($_POST['no_auto_update'])     : 0;
-		$bandwidth_saver   = !empty($_POST['bandwidth_saver'])   ? intval($_POST['bandwidth_saver'])    : 0;
-		$smart_threading   = !empty($_POST['smart_threading'])   ? intval($_POST['smart_threading'])    : 0;
-		$nowarn_insecure   = !empty($_POST['nowarn_insecure'])   ? intval($_POST['nowarn_insecure'])    : 0;
-		$browser_update    = !empty($_POST['browser_update'])    ? intval($_POST['browser_update'])     : 0;
+		$theme              = !empty($_POST['theme'])              ? Strings::escapeTags(trim($_POST['theme']))        : $a->user['theme'];
+		$mobile_theme       = !empty($_POST['mobile_theme'])       ? Strings::escapeTags(trim($_POST['mobile_theme'])) : '';
+		$nosmile            = !empty($_POST['nosmile'])            ? intval($_POST['nosmile'])            : 0;
+		$first_day_of_week  = !empty($_POST['first_day_of_week'])  ? intval($_POST['first_day_of_week'])  : 0;
+		$noinfo             = !empty($_POST['noinfo'])             ? intval($_POST['noinfo'])             : 0;
+		$infinite_scroll    = !empty($_POST['infinite_scroll'])    ? intval($_POST['infinite_scroll'])    : 0;
+		$no_auto_update     = !empty($_POST['no_auto_update'])     ? intval($_POST['no_auto_update'])     : 0;
+		$bandwidth_saver    = !empty($_POST['bandwidth_saver'])    ? intval($_POST['bandwidth_saver'])    : 0;
+		$no_smart_threading = !empty($_POST['no_smart_threading']) ? intval($_POST['no_smart_threading']) : 0;
+		$nowarn_insecure    = !empty($_POST['nowarn_insecure'])    ? intval($_POST['nowarn_insecure'])    : 0;
+		$browser_update     = !empty($_POST['browser_update'])     ? intval($_POST['browser_update'])     : 0;
 		if ($browser_update != -1) {
 			$browser_update = $browser_update * 1000;
 			if ($browser_update < 10000) {
@@ -367,7 +368,7 @@ function settings_post(App $a)
 		PConfig::set(local_user(), 'system', 'infinite_scroll'         , $infinite_scroll);
 		PConfig::set(local_user(), 'system', 'no_auto_update'          , $no_auto_update);
 		PConfig::set(local_user(), 'system', 'bandwidth_saver'         , $bandwidth_saver);
-		PConfig::set(local_user(), 'system', 'smart_threading'         , $smart_threading);
+		PConfig::set(local_user(), 'system', 'no_smart_threading'      , $no_smart_threading);
 
 		if (in_array($theme, Theme::getAllowedList())) {
 			if ($theme == $a->user['theme']) {
@@ -782,6 +783,7 @@ function settings_content(App $a)
 		$accept_only_sharer        = intval(PConfig::get(local_user(), 'system', 'accept_only_sharer'));
 		$disable_cw                = intval(PConfig::get(local_user(), 'system', 'disable_cw'));
 		$no_intelligent_shortening = intval(PConfig::get(local_user(), 'system', 'no_intelligent_shortening'));
+		$attach_link_title         = intval(PConfig::get(local_user(), 'system', 'attach_link_title'));
 		$ostatus_autofriend        = intval(PConfig::get(local_user(), 'system', 'ostatus_autofriend'));
 		$default_group             = PConfig::get(local_user(), 'ostatus', 'default_group');
 		$legacy_contact            = PConfig::get(local_user(), 'ostatus', 'legacy_contact');
@@ -827,7 +829,13 @@ function settings_content(App $a)
 
 		$tpl = Renderer::getMarkupTemplate('settings/connectors.tpl');
 
-		$mail_disabled_message = (($mail_disabled) ? L10n::t('Email access is disabled on this site.') : '');
+		$mail_disabled_message = ($mail_disabled ? L10n::t('Email access is disabled on this site.') : '');
+
+		$ssl_options = ['TLS' => 'TLS', 'SSL' => 'SSL'];
+
+		if (Config::get('system', 'insecure_imap')) {
+			$ssl_options['notls'] = L10n::t('None');
+		}
 
 		$o .= Renderer::replaceMacros($tpl, [
 			'$form_security_token' => BaseModule::getFormSecurityToken("settings_connectors"),
@@ -841,6 +849,7 @@ function settings_content(App $a)
 			'$accept_only_sharer' => ['accept_only_sharer', L10n::t('Accept only top level posts by contacts you follow'), $accept_only_sharer, L10n::t('The system does an auto completion of threads when a comment arrives. This has got the side effect that you can receive posts that had been started by a non-follower but had been commented by someone you follow. This setting deactivates this behaviour. When activated, you strictly only will receive posts from people you really do follow.')],
 			'$disable_cw' => ['disable_cw', L10n::t('Disable Content Warning'), $disable_cw, L10n::t('Users on networks like Mastodon or Pleroma are able to set a content warning field which collapse their post by default. This disables the automatic collapsing and sets the content warning as the post title. Doesn\'t affect any other content filtering you eventually set up.')],
 			'$no_intelligent_shortening' => ['no_intelligent_shortening', L10n::t('Disable intelligent shortening'), $no_intelligent_shortening, L10n::t('Normally the system tries to find the best link to add to shortened posts. If this option is enabled then every shortened post will always point to the original friendica post.')],
+			'$attach_link_title' => ['attach_link_title', L10n::t('Attach the link title'), $attach_link_title, L10n::t('When activated, the title of the attached link will be added as a title on posts to Diaspora. This is mostly helpful with "remote-self" contacts that share feed content.')],
 			'$ostatus_autofriend' => ['snautofollow', L10n::t("Automatically follow any GNU Social \x28OStatus\x29 followers/mentioners"), $ostatus_autofriend, L10n::t('If you receive a message from an unknown OStatus user, this option decides what to do. If it is checked, a new contact will be created for every unknown user.')],
 			'$default_group' => Group::displayGroupSelection(local_user(), $default_group, L10n::t("Default group for OStatus contacts")),
 			'$legacy_contact' => ['legacy_contact', L10n::t('Your legacy GNU Social account'), $legacy_contact, L10n::t("If you enter your old GNU Social/Statusnet account name here \x28in the format user@domain.tld\x29, your contacts will be added automatically. The field will be emptied when done.")],
@@ -854,15 +863,15 @@ function settings_content(App $a)
 			'$imap_desc' => L10n::t("If you wish to communicate with email contacts using this service \x28optional\x29, please specify how to connect to your mailbox."),
 			'$imap_lastcheck' => ['imap_lastcheck', L10n::t('Last successful email check:'), $mail_chk, ''],
 			'$mail_disabled' => $mail_disabled_message,
-			'$mail_server'	=> ['mail_server',  L10n::t('IMAP server name:'), $mail_server, ''],
-			'$mail_port'	=> ['mail_port', 	 L10n::t('IMAP port:'), $mail_port, ''],
-			'$mail_ssl'		=> ['mail_ssl', 	 L10n::t('Security:'), strtoupper($mail_ssl), '', ['notls'=>L10n::t('None'), 'TLS'=>'TLS', 'SSL'=>'SSL']],
-			'$mail_user'	=> ['mail_user',    L10n::t('Email login name:'), $mail_user, ''],
-			'$mail_pass'	=> ['mail_pass', 	 L10n::t('Email password:'), '', ''],
-			'$mail_replyto'	=> ['mail_replyto', L10n::t('Reply-to address:'), $mail_replyto, 'Optional'],
-			'$mail_pubmail'	=> ['mail_pubmail', L10n::t('Send public posts to all email contacts:'), $mail_pubmail, ''],
-			'$mail_action'	=> ['mail_action',	 L10n::t('Action after import:'), $mail_action, '', [0=>L10n::t('None'), /*1=>L10n::t('Delete'),*/ 2=>L10n::t('Mark as seen'), 3=>L10n::t('Move to folder')]],
-			'$mail_movetofolder'	=> ['mail_movetofolder',	 L10n::t('Move to folder:'), $mail_movetofolder, ''],
+			'$mail_server'	=> ['mail_server',	L10n::t('IMAP server name:'), $mail_server, ''],
+			'$mail_port'	=> ['mail_port', 	L10n::t('IMAP port:'), $mail_port, ''],
+			'$mail_ssl'	=> ['mail_ssl',		L10n::t('Security:'), strtoupper($mail_ssl), '', $ssl_options],
+			'$mail_user'	=> ['mail_user',	L10n::t('Email login name:'), $mail_user, ''],
+			'$mail_pass'	=> ['mail_pass',	L10n::t('Email password:'), '', ''],
+			'$mail_replyto'	=> ['mail_replyto',	L10n::t('Reply-to address:'), $mail_replyto, 'Optional'],
+			'$mail_pubmail'	=> ['mail_pubmail',	L10n::t('Send public posts to all email contacts:'), $mail_pubmail, ''],
+			'$mail_action'	=> ['mail_action',	L10n::t('Action after import:'), $mail_action, '', [0 => L10n::t('None'), 1 => L10n::t('Delete'), 2 => L10n::t('Mark as seen'), 3 => L10n::t('Move to folder')]],
+			'$mail_movetofolder' => ['mail_movetofolder', L10n::t('Move to folder:'), $mail_movetofolder, ''],
 			'$submit' => L10n::t('Save Settings'),
 		]);
 
@@ -930,7 +939,7 @@ function settings_content(App $a)
 		$infinite_scroll = PConfig::get(local_user(), 'system', 'infinite_scroll', 0);
 		$no_auto_update = PConfig::get(local_user(), 'system', 'no_auto_update', 0);
 		$bandwidth_saver = PConfig::get(local_user(), 'system', 'bandwidth_saver', 0);
-		$smart_threading = PConfig::get(local_user(), 'system', 'smart_threading', 0);
+		$no_smart_threading = PConfig::get(local_user(), 'system', 'no_smart_threading', 0);
 
 		$theme_config = "";
 		if (($themeconfigfile = get_theme_config_file($theme_selected)) !== null) {
@@ -959,7 +968,7 @@ function settings_content(App $a)
 			'$infinite_scroll'	=> ['infinite_scroll', L10n::t("Infinite scroll"), $infinite_scroll, ''],
 			'$no_auto_update'	=> ['no_auto_update', L10n::t("Automatic updates only at the top of the network page"), $no_auto_update, L10n::t('When disabled, the network page is updated all the time, which could be confusing while reading.')],
 			'$bandwidth_saver' => ['bandwidth_saver', L10n::t('Bandwidth Saver Mode'), $bandwidth_saver, L10n::t('When enabled, embedded content is not displayed on automatic updates, they only show on page reload.')],
-			'$smart_threading' => ['smart_threading', L10n::t('Smart Threading'), $smart_threading, L10n::t('When enabled, suppress extraneous thread indentation while keeping it where it matters. Only works if threading is available and enabled.')],
+			'$no_smart_threading' => ['no_smart_threading', L10n::t('Disable Smart Threading'), $no_smart_threading, L10n::t('Disable the automatic suppression of extraneous thread indentation.')],
 
 			'$d_tset' => L10n::t('General Theme Settings'),
 			'$d_ctset' => L10n::t('Custom Theme Settings'),
@@ -1197,7 +1206,7 @@ function settings_content(App $a)
 		'$permissions' => L10n::t('Default Post Permissions'),
 		'$permdesc' => L10n::t("\x28click to open/close\x29"),
 		'$visibility' => $profile['net-publish'],
-		'$aclselect' => ACL::getFullSelectorHTML($a->user),
+		'$aclselect' => ACL::getFullSelectorHTML($a->page, $a->user),
 		'$suggestme' => $suggestme,
 		'$blockwall'=> $blockwall, // array('blockwall', L10n::t('Allow friends to post to your profile page:'), !$blockwall, ''),
 		'$blocktags'=> $blocktags, // array('blocktags', L10n::t('Allow friends to tag your posts:'), !$blocktags, ''),

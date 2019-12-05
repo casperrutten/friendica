@@ -649,14 +649,16 @@ function doignore(ident) {
 	ident = ident.toString();
 	$('#like-rotator-' + ident).show();
 	$.get('item/ignore/' + ident, function(data) {
-		if (data.match(/1/)) {
-			$('#ignored-' + ident).addClass('ignored');
-			$('#ignored-' + ident).removeClass('unignored');
+		if (data === 1) {
+			$('#ignored-' + ident)
+				.addClass('ignored')
+				.removeClass('unignored');
 			$('#ignore-' + ident).addClass('hidden');
 			$('#unignore-' + ident).removeClass('hidden');
 		} else {
-			$('#ignored-' + ident).addClass('unignored');
-			$('#ignored-' + ident).removeClass('ignored');
+			$('#ignored-' + ident)
+				.addClass('unignored')
+				.removeClass('ignored');
 			$('#ignore-' + ident).removeClass('hidden');
 			$('#unignore-' + ident).addClass('hidden');
 		}
@@ -764,11 +766,10 @@ function showHideComments(id) {
 }
 
 function preview_post() {
-	$("#jot-preview").val("1");
 	$("#jot-preview-content").show();
 	$.post(
 		"item",
-		$("#profile-jot-form").serialize(),
+		$("#profile-jot-form").serialize() + '&preview=1',
 		function(data) {
 			if (data.preview) {
 				$("#jot-preview-content").html(data.preview);
@@ -778,7 +779,6 @@ function preview_post() {
 		},
 		"json"
 	);
-	$("#jot-preview").val("0");
 	return true;
 }
 

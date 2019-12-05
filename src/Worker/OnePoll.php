@@ -494,6 +494,8 @@ class OnePoll
 					Logger::log("Mail: Parsing mail ".$msg_uid, Logger::DATA);
 
 					$datarray = [];
+					$datarray['uid'] = $importer_uid;
+					$datarray['contact-id'] = $contact['id'];
 					$datarray['verb'] = Activity::POST;
 					$datarray['object-type'] = Activity\ObjectType::NOTE;
 					$datarray['network'] = Protocol::MAIL;
@@ -539,9 +541,9 @@ class OnePoll
 					}
 
 					// look for a 'references' or an 'in-reply-to' header and try to match with a parent item we have locally.
-					$raw_refs = ((property_exists($meta, 'references')) ? str_replace("\t", '', $meta->references) : '');
+					$raw_refs = (property_exists($meta, 'references') ? str_replace("\t", '', $meta->references) : '');
 					if (!trim($raw_refs)) {
-						$raw_refs = ((property_exists($meta, 'in_reply_to')) ? str_replace("\t", '', $meta->in_reply_to) : '');
+						$raw_refs = (property_exists($meta, 'in_reply_to') ? str_replace("\t", '', $meta->in_reply_to) : '');
 					}
 					$raw_refs = trim($raw_refs);  // Don't allow a blank reference in $refs_arr
 
@@ -596,36 +598,33 @@ class OnePoll
 						$datarray['parent-uri'] = $datarray['uri'];
 					}
 
-					$r = Email::getMessage($mbox, $msg_uid, $reply);
-					if (!$r) {
-						Logger::log("Mail: can't fetch msg ".$msg_uid." for ".$mailconf['user']);
-						continue;
-					}
-					$datarray['body'] = Strings::escapeHtml($r['body']);
-					$datarray['body'] = BBCode::limitBodySize($datarray['body']);
+					$headers = imap_headerinfo($mbox, $meta->msgno);
 
-					Logger::log("Mail: Importing ".$msg_uid." for ".$mailconf['user']);
+					$object = [];
 
-					/// @TODO Adding a gravatar for the original author would be cool
-
-					$from = imap_mime_header_decode($meta->from);
-					$fromdecoded = "";
-					foreach ($from as $frompart) {
-						if ($frompart->charset != "default") {
-							$fromdecoded .= iconv($frompart->charset, 'UTF-8//IGNORE', $frompart->text);
-						} else {
-							$fromdecoded .= $frompart->text;
-						}
+					if (!empty($headers->from)) {
+						$object['from'] = $headers->from;
 					}
 
-					$fromarr = imap_rfc822_parse_adrlist($fromdecoded, BaseObject::getApp()->getHostName());
+					if (!empty($headers->to)) {
+						$object['to'] = $headers->to;
+					}
 
-					$frommail = $fromarr[0]->mailbox."@".$fromarr[0]->host;
+					if (!empty($headers->reply_to)) {
+						$object['reply_to'] = $headers->reply_to;
+					}
 
-					if (isset($fromarr[0]->personal)) {
-						$fromname = $fromarr[0]->personal;
-					} else {
-						$fromname = $frommail;
+					if (!empty($headers->sender)) {
+						$object['sender'] = $headers->sender;
+					}
+
+					if (!empty($object)) {
+						$datarray['object'] = json_encode($object);
+					}
+
+					$fromname = $frommail = $headers->from[0]->mailbox . '@' . $headers->from[0]->host;
+					if (!empty($headers->from[0]->personal)) {
+						$fromname = $headers->from[0]->personal;
 					}
 
 					$datarray['author-name'] = $fromname;
@@ -636,15 +635,22 @@ class OnePoll
 					$datarray['owner-link'] = "mailto:".$contact['addr'];
 					$datarray['owner-avatar'] = $contact['photo'];
 
-					$datarray['uid'] = $importer_uid;
-					$datarray['contact-id'] = $contact['id'];
 					if ($datarray['parent-uri'] === $datarray['uri']) {
 						$datarray['private'] = 1;
 					}
+
 					if (!PConfig::get($importer_uid, 'system', 'allow_public_email_replies')) {
 						$datarray['private'] = 1;
 						$datarray['allow_cid'] = '<' . $contact['id'] . '>';
 					}
+
+					$datarray = Email::getMessage($mbox, $msg_uid, $reply, $datarray);
+					if (empty($datarray['body'])) {
+						Logger::log("Mail: can't fetch msg ".$msg_uid." for ".$mailconf['user']);
+						continue;
+					}
+
+					Logger::log("Mail: Importing ".$msg_uid." for ".$mailconf['user']);
 
 					Item::insert($datarray);
 
